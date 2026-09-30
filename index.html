@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>COSMOZOOM 3D - Deep Space Explorer</title>
+  
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background-color: #01040a;
+      color: #00f0ff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #webgl-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* Sci-Fi HUD Overlay */
+    .hud-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 15px;
+    }
+
+    .hud-header {
+      background: rgba(3, 12, 28, 0.85);
+      border: 1px solid #00f0ff;
+      border-radius: 10px;
+      padding: 12px 15px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
+    }
+
+    .hud-header h1 {
+      font-size: 16px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #00f0ff;
+      text-shadow: 0 0 8px #00f0ff;
+    }
+
+    .hud-header p {
+      font-size: 10px;
+      color: #72d6ff;
+      margin-top: 3px;
+    }
+
+    .hud-controls {
+      pointer-events: auto;
+      background: rgba(3, 12, 28, 0.85);
+      border: 1px solid #00f0ff;
+      border-radius: 10px;
+      padding: 12px;
+      backdrop-filter: blur(6px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .hud-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+    }
+
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .btn {
+      pointer-events: auto;
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid #00f0ff;
+      color: #00f0ff;
+      padding: 10px;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 10px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      text-align: center;
+    }
+
+    .btn:active {
+      background: #00f0ff;
+      color: #01040a;
+    }
+
+    .stat-val {
+      color: #ff0077;
+      font-weight: bold;
+    }
+  </style>
+
+  <!-- Three.js 3D Engine -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+  <div id="webgl-container"></div>
+
+  <div class="hud-overlay">
+    <div class="hud-header">
+      <h1>COSMOZOOM 3D // EXPLORER</h1>
+      <p>DEEP SPACE PLANETARY OBSERVATION SYSTEM</p>
+    </div>
+
+    <div class="hud-controls">
+      <div class="hud-row">
+        <span>CAMERA TARGET:</span>
+        <span class="stat-val" id="targetName">SOLAR SYSTEM</span>
+      </div>
+      <div class="hud-row">
+        <span>DISTANCE:</span>
+        <span class="stat-val" id="distVal">280 AU</span>
+      </div>
+      <div class="btn-group">
+        <button class="btn" onclick="zoomTarget('sun')">ZOOM SUN</button>
+        <button class="btn" onclick="zoomTarget('cyberia')">ZOOM CYBERIA</button>
+        <button class="btn" onclick="zoomTarget('aegis')">ZOOM AEGIS-9</button>
+        <button class="btn" onclick="resetCamera()">RESET VIEW</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Scene & Renderer Setup
+    const container = document.getElementById('webgl-container');
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(0, 100, 280);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    // 2. Lighting System
+    const ambientLight = new THREE.AmbientLight(0x222244, 1.2);
+    scene.add(ambientLight);
+
+    const sunLight = new THREE.PointLight(0xffaa00, 2, 800);
+    sunLight.position.set(0, 0, 0);
+    scene.add(sunLight);
+
+    // 3. Central Sun Star
+    const sunGeo = new THREE.SphereGeometry(22, 32, 32);
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, wireframe: true });
+    const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+    scene.add(sunMesh);
+
+    // Sun Glow Aura
+    const auraGeo = new THREE.SphereGeometry(25, 32, 32);
+    const auraMat = new THREE.MeshBasicMaterial({ color: 0xff3300, wireframe: true, transparent: true, opacity: 0.25 });
+    const auraMesh = new THREE.Mesh(auraGeo, auraMat);
+    scene.add(auraMesh);
+
+    // 4. Planets Setup
+    const planets = [];
+
+    function createPlanet(name, color, size, distance, speed) {
+      const pivot = new THREE.Group();
+      scene.add(pivot);
+
+      const geo = new THREE.SphereGeometry(size, 24, 24);
+      const mat = new THREE.MeshPhongMaterial({ color: color, wireframe: true, emissive: color, emissiveIntensity: 0.2 });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.x = distance;
+      pivot.add(mesh);
+
+      // Orbit Line Ring
+      const ringGeo = new THREE.RingGeometry(distance - 0.4, distance + 0.4, 64);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, side: THREE.DoubleSide, transparent: true, opacity: 0.2 });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.rotation.x = Math.PI / 2;
+      scene.add(ringMesh);
+
+      planets.push({ name, pivot, mesh, distance, speed });
+    }
+
+    createPlanet('CYBERIA', 0x00f0ff, 7, 75, 0.012);
+    createPlanet('AEGIS-9', 0xff0077, 10, 135, 0.007);
+
+    // 5. Starfield Dust Matrix
+    const starGeo = new THREE.BufferGeometry();
+    const starCount = 1500;
+    const starCoords = new Float32Array(starCount * 3);
+
+    for (let i = 0; i < starCount * 3; i++) {
+      starCoords[i] = (Math.random() - 0.5) * 1200;
+    }
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starCoords, 3));
+    const starMat = new THREE.PointsMaterial({ color: 0x00f0ff, size: 1.2, transparent: true, opacity: 0.7 });
+    const starField = new THREE.Points(starGeo, starMat);
+    scene.add(starField);
+
+    // 6. Camera Zoom Engine
+    let targetPos = new THREE.Vector3(0, 100, 280);
+    let targetLookAt = new THREE.Vector3(0, 0, 0);
+
+    function zoomTarget(targetKey) {
+      if (targetKey === 'sun') {
+        targetPos.set(0, 30, 70);
+        targetLookAt.set(0, 0, 0);
+        document.getElementById('targetName').innerText = "SOLAR CORE";
+        document.getElementById('distVal').innerText = "70 AU";
+      } else if (targetKey === 'cyberia') {
+        const p = planets[0];
+        const worldPos = new THREE.Vector3();
+        p.mesh.getWorldPosition(worldPos);
+        targetPos.set(worldPos.x + 15, worldPos.y + 10, worldPos.z + 25);
+        targetLookAt.copy(worldPos);
+        document.getElementById('targetName').innerText = p.name;
+        document.getElementById('distVal').innerText = "30 AU";
+      } else if (targetKey === 'aegis') {
+        const p = planets[1];
+        const worldPos = new THREE.Vector3();
+        p.mesh.getWorldPosition(worldPos);
+        targetPos.set(worldPos.x + 20, worldPos.y + 12, worldPos.z + 30);
+        targetLookAt.copy(worldPos);
+        document.getElementById('targetName').innerText = p.name;
+        document.getElementById('distVal').innerText = "40 AU";
+      }
+    }
+
+    function resetCamera() {
+      targetPos.set(0, 100, 280);
+      targetLookAt.set(0, 0, 0);
+      document.getElementById('targetName').innerText = "SOLAR SYSTEM";
+      document.getElementById('distVal').innerText = "280 AU";
+    }
+
+    // 7. Render Animation Loop
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Rotate Sun & Aura
+      sunMesh.rotation.y += 0.003;
+      auraMesh.rotation.y -= 0.002;
+      starField.rotation.y -= 0.0003;
+
+      // Orbit Planets
+      planets.forEach(p => {
+        p.pivot.rotation.y += p.speed;
+        p.mesh.rotation.y += 0.02;
+      });
+
+      // Smooth Camera Transition (Lerp)
+      camera.position.lerp(targetPos, 0.04);
+      camera.lookAt(targetLookAt);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+  </html>
+  
